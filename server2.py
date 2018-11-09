@@ -249,10 +249,10 @@ class myHandler(BaseHTTPRequestHandler):
                         files_found = []
                         files_found.append(latestFile)
 
-                    msg = "<h1>Garrison Archive Server</h1><hr>"
+                    msg = "<h1>Generic Archive Server</h1><hr>"
                     up_dir = self.upOne()
                     if up_dir != "/":
-                        msg = '<h1>Garrison Archive Server</h1><br><a href="'+ self.upOne()  + '">'+ 'back' + '</a><hr>'
+                        msg = '<h1>Generic Archive Server</h1><br><a href="'+ self.upOne()  + '">'+ 'back' + '</a><hr>'
 
                     msg += "Found: "+str(len(files_found))+" files.<hr>"
 
@@ -279,11 +279,11 @@ class myHandler(BaseHTTPRequestHandler):
             if found_child_dir:
 
                 current_level = child_dirs
-                msg = "<h1>Garrison Archive Server</h1><hr>"
+                msg = "<h1>Generic Archive Server</h1><hr>"
 
                 up_dir = self.upOne()
                 if up_dir != "/":
-                    msg = '<h1>Garrison Archive Server</h1><br><a href="'+ self.upOne()  + '">'+ 'back' + '</a><hr>'
+                    msg = '<h1>Generic Archive Server</h1><br><a href="'+ self.upOne()  + '">'+ 'back' + '</a><hr>'
 
                 for folder in current_level:
                     msg += '<a href="' + self.path +"/"+ folder  + '"">'+ folder + '</a><br>'
@@ -311,11 +311,11 @@ class myHandler(BaseHTTPRequestHandler):
 
                 current_level = filtered_list
 
-            msg = "<h1>Garrison Archive Server</h1><hr>"
+            msg = "<h1>Generic Archive Server</h1><hr>"
 
             up_dir = self.upOne()
             if up_dir != "/":
-                msg = '<html><h1>Garrison Archive Server</h1><br><a href="'+ self.upOne()  + '">'+ 'back' + '</a><hr>'
+                msg = '<html><h1>Generic Archive Server</h1><br><a href="'+ self.upOne()  + '">'+ 'back' + '</a><hr>'
                 msg += "Found: "+str(len(current_level))+" files.<hr>"
 
             for file in current_level:
