@@ -16,7 +16,9 @@ PORT_NUMBER = 8001
 def CreateObject(filename,upload_time=None,parent_dir=None,metadata={}):
     new_object = {}
     new_object["filename"] = filename
+    
     new_object["md5"] = ''.join(random.choice(string.hexdigits.lower()) for _ in range(32))
+
     if upload_time:
         new_object["uploadedAt"] = upload_time
     else:
@@ -25,7 +27,7 @@ def CreateObject(filename,upload_time=None,parent_dir=None,metadata={}):
     new_object["uploadDate"] = datetime.datetime.utcfromtimestamp(new_object["uploadedAt"]).strftime("%Y-%m-%d")
 
     new_object["serverObjectType"] = "file"
-    new_object["size"] = int(10000000*random.random())
+    new_object["size"] = int(100000000*random.random())
     new_object["saveFile"] = str(uuid.uuid4())
 
     new_object["parentDir"] = ""
@@ -42,7 +44,7 @@ def CreateObject(filename,upload_time=None,parent_dir=None,metadata={}):
 def formatFileInfo(file):
 
     msg = ""
-    msg += '<div><span style="width:200px"><strong>'+file['filename']+"</strong></span> <br> "
+    msg += '<div style="background-color:#eee;padding:10px;border-radius:10px;font-family:arial"><span style="width:200px"><strong>'+file['filename']+"</strong></span> <br> "
     msg += "uploadDate: "+file['uploadDate'] + "<br>"
     msg += "size: "+str(file['size']) + "<br>"
     msg += "md5: "+str(file['md5']) + "<br>"
@@ -71,8 +73,17 @@ def matchQuery(query,f):
 
     return file_match
 
-def findLatest(files):
-    return {}
+def findLatestFile(files):
+
+    latestFile = files[0]
+    for f in files:
+        if f["uploadedAt"] > latestFile["uploadedAt"]:
+            latestFile = f
+
+    files = []
+    files.append(latestFile)
+
+    return latestFile
 
 #This class will handles any incoming request from
 #the browser 
@@ -107,13 +118,10 @@ class myHandler(BaseHTTPRequestHandler):
     directory = {}
     directory["develop"] = {"serverObjectType":"directory"}
     directory["feature"] = {"serverObjectType":"directory"}
-
     directory["release"] = {"serverObjectType":"directory"}
     directory["release"]["1.1.0"] = {"serverObjectType":"directory"}
     directory["release"]["1.2.0"] = {"serverObjectType":"directory"}
     directory["release"]["1.3.0"] = {"serverObjectType":"directory"}
-
-
     directory["feature"]["SOF-1234-my-first-feature"] = {"serverObjectType":"directory"}
     directory["feature"]["SOF-5678-my-second-feature"] = {"serverObjectType":"directory"}
 
@@ -123,7 +131,7 @@ class myHandler(BaseHTTPRequestHandler):
         if random.random() > 0.8:
             myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
 
-        for file_type in ["cnp","rnp","client","mp"]:
+        for file_type in ["cx1","rx1","cx2","mx1"]:
             for variant in ["","-dev"]:
                 for signed in ["",".signed",".dev-signed"]:
                     file_name = file_type + "-" + myhash + variant + ".img" + signed
@@ -159,7 +167,7 @@ class myHandler(BaseHTTPRequestHandler):
                         for signed in ["",".signed",".dev-signed"]:
                             file_name = file_type + "-" + myhash + variant + ".img" + signed
                            # print file_name
-                            fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["release",release],metadata={'type':file_type,'component':'iap'})
+                            fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["release",release],metadata={'type':file_type,'component':'zap'})
                             file_id = fobj["saveFile"]
                             files[file_id] = copy.deepcopy(fobj)
                             directory["release"][release][file_id] = {}
@@ -170,6 +178,7 @@ class myHandler(BaseHTTPRequestHandler):
 
         query = None
         findLatest = False
+        sortBy = False
         query_parameters = []
 
         split_path = self.path.split("/")[1:]
@@ -187,20 +196,29 @@ class myHandler(BaseHTTPRequestHandler):
                         findLatest = True
                     else:
                         query_parameters.append((key,value))
+
+                elif key == "sortBy":
+                    if sortBy:
+                        return self.sendResponse(400,"Cannot have more than one sortBy query")
+                    sortBy = value
                 else:
                     query_parameters.append((key,value))
 
             query = query_parameters         
 
         uri = self.path.split("?")[0]
-
         split_path = uri.split("/")[1:]
         split_path[0] = "/" + split_path[0]
         split_path[-1] = split_path[-1].replace("%","?")
 
+        # Return the total number of files
         if self.path[0:9] == "/numfiles":
-            return self.sendResponse(200,len(myHandler.files))
+            tot_size = 0
+            for f in myHandler.files:
+                tot_size += int(myHandler.files[f]["size"]) / 1048576
+            return self.sendResponse(200,str(len(myHandler.files))+" taking up "+str(tot_size)+"MB")
 
+        # Return a list of files from the flat structure
         if self.path[0:6] == "/files":
 
             if query:
@@ -208,6 +226,10 @@ class myHandler(BaseHTTPRequestHandler):
                 for f in myHandler.files:
                     if matchQuery(query,myHandler.files[f]):
                         filtered_list.append(myHandler.files[f])
+
+                if findLatest:
+                    filtered_list = findLatestFile(filtered_list)
+
 
                 return self.sendResponse(200,json.dumps(filtered_list, sort_keys=True, indent=4, separators=(',', ': ')))    
 
@@ -291,7 +313,7 @@ class myHandler(BaseHTTPRequestHandler):
                 msg += "<hr>"
                 for file in child_files[0:100]:
                     msg += formatFileInfo(file)
-                print 2
+
                 return self.sendResponse(200,msg,headers=(('Content-type','text/html')))       
 
             else:
@@ -322,7 +344,6 @@ class myHandler(BaseHTTPRequestHandler):
                 msg += formatFileInfo(file) 
 
             msg += "</html>"
-            print 3
             return self.sendResponse(200,msg,headers=(('Content-type','text/html')))  
 
             #return self.sendResponse(200,json.dumps(current_level, sort_keys=True, indent=4, separators=(',', ': ')))
@@ -338,6 +359,9 @@ class myHandler(BaseHTTPRequestHandler):
 
         new_data = json.loads(body)
         for field in new_data:
+            if field in ["md5","size","saveFile"]:
+                print "Cannot update these values"
+
             myHandler.files[file_id][field] = new_data[field]
 
         return self.sendResponse(205)
@@ -384,8 +408,7 @@ class myHandler(BaseHTTPRequestHandler):
         
 
 try:
-    #Create a web server and define the handler to manage the
-    #incoming request
+    #Create a web server and define the handler to manage the #incoming request
     server = HTTPServer(('', PORT_NUMBER), myHandler)
     print 'Started httpserver on port ' , PORT_NUMBER
     
