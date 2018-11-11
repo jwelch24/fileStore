@@ -9,7 +9,7 @@ import datetime
 import string
 import uuid
 
-PORT_NUMBER = 8001
+PORT_NUMBER = 80
 
 
 
@@ -17,7 +17,8 @@ def CreateObject(filename,upload_time=None,parent_dir=None,metadata={}):
     new_object = {}
     new_object["filename"] = filename
     
-    new_object["md5"] = ''.join(random.choice(string.hexdigits.lower()) for _ in range(32))
+    new_object["md5sum"] = ''.join(random.choice(string.hexdigits.lower()) for _ in range(32))
+    new_object["sha256"] = ''.join(random.choice(string.hexdigits.lower()) for _ in range(64))
 
     if upload_time:
         new_object["uploadedAt"] = upload_time
@@ -25,7 +26,7 @@ def CreateObject(filename,upload_time=None,parent_dir=None,metadata={}):
         new_object["uploadedAt"] = time.time()
 
     new_object["uploadDate"] = datetime.datetime.utcfromtimestamp(new_object["uploadedAt"]).strftime("%Y-%m-%d")
-
+    new_object["uploadTime"] = datetime.datetime.utcfromtimestamp(new_object["uploadedAt"]).strftime("%H:%M")
     new_object["serverObjectType"] = "file"
     new_object["size"] = int(100000000*random.random())
     new_object["saveFile"] = str(uuid.uuid4())
@@ -38,42 +39,51 @@ def CreateObject(filename,upload_time=None,parent_dir=None,metadata={}):
         new_object["parentDir"] = new_object["parentDir"][:-1]
 
     new_object["metadata"] = copy.deepcopy(metadata)
+    new_object["key"] = new_object["saveFile"]
 
     return copy.deepcopy(new_object)
 
 def formatFileInfo(file):
 
     msg = ""
-    msg += '<div style="background-color:#eee;padding:10px;border-radius:10px;font-family:arial"><span style="width:200px"><strong>'+file['filename']+"</strong></span> <br> "
+    msg += '<div style="background-color:#eee;padding:10px;border-radius:10px;font-family:arial">'
+    msg += '<span style="width:200px"><strong>'+file['filename']+"</strong></span> <hr>"
     msg += "uploadDate: "+file['uploadDate'] + "<br>"
-    msg += "size: "+str(file['size']) + "<br>"
-    msg += "md5: "+str(file['md5']) + "<br>"
+    msg += "uploadDate: "+file['uploadDate'] + "<br>"
+    msg += "uploadTime: "+file['uploadTime'] + "<br>"
+    msg += "size: "+str(int(float(file['size'])/1048576)) + "MB<br>"
+    msg += "md5sum: "+str(file['md5sum']) + "<br>"
+    msg += "sha256: "+str(file['sha256']) + "<br>"
     msg += "saveFile: "+str(file['saveFile']) + "<br><br>"
     msg += "<b>metadata</b><br>"
     for field in file['metadata']:
         msg += field+": " + str(file['metadata'][field]) + "<br>"
-    msg += '<hr><a href="'+  "/download/" + file["saveFile"]  + '">'+ 'Download' + '</a><hr>'
+    msg += '<hr><a href="'+  "/download?saveFile=" + file["saveFile"]  + '">'+ 'Download' + '</a><hr>'
     msg += '</div><br>'  
 
     return msg
 
 def matchQuery(query,f):
     for q in query:
-
         q_levels = q[0].split(".")
         file_data = copy.deepcopy(f)
         for r in q_levels:
             file_data = file_data[r]
 
-        if str(file_data) in str(q[1].split(",")):
-            file_match = True
-        else:
-            file_match = False
+        file_match = False
+        for specified_matches in q[1].split(","):
+            if fnmatch.fnmatch(str(file_data),specified_matches):
+                file_match = True
+
+        if not file_match:
             break
 
     return file_match
 
 def findLatestFile(files):
+
+    if len(files) == 0:
+        return []
 
     latestFile = files[0]
     for f in files:
@@ -93,13 +103,13 @@ class myHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         if headers:
             for h in headers:
+                print h
                 self.send_header(h[0],h[1])
 
 #        self.send_header('Content-type','text/html')
         self.end_headers()
         if msg:
             self.wfile.write(msg)
-
 
     def upOne(self):
 
@@ -112,6 +122,43 @@ class myHandler(BaseHTTPRequestHandler):
             up_one = "/"
 
         return up_one
+
+    def splitQuery(self):
+        query = None
+        query_parameters = []
+        findLatest = False
+        sortBy = None
+        page = None
+        if len(self.path.split("?")) == 2:
+            query =  self.path.split("?")[1]
+            
+            for q in query.split("&"):
+                # Look for special cases
+                key = q.split("=")[0]
+                value = q.split("=")[1].replace("%","?")
+
+                if key == "uploadDate":
+                    if value == "latest":
+                        findLatest = True
+                    else:
+                        query_parameters.append((key,value))
+
+                elif key == "sortBy":
+                    if sortBy:
+                        return self.sendResponse(400,"Cannot have more than one sortBy query")
+                    sortBy = value
+
+                elif key == "page":
+                    page = int(value)
+
+                else:
+                    query_parameters.append((key,value))
+
+
+
+            query = query_parameters
+
+        return query , findLatest , sortBy , page
 
     files = {}
 
@@ -136,7 +183,7 @@ class myHandler(BaseHTTPRequestHandler):
                 for signed in ["",".signed",".dev-signed"]:
                     file_name = file_type + "-" + myhash + variant + ".img" + signed
                    # print file_name
-                    fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["develop"],metadata={'type':file_type})
+                    fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["develop"],metadata={'type':file_type,'component':'zap'})
                     file_id = fobj["saveFile"]
                     files[file_id] = copy.deepcopy(fobj)
 
@@ -151,8 +198,7 @@ class myHandler(BaseHTTPRequestHandler):
                     for variant in ["","-dev"]:
                         for signed in ["",".signed",".dev-signed"]:
                             file_name = file_type + "-" + myhash + variant + ".img" + signed
-                           # print file_name
-                            fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["feature",feature],metadata={'type':file_type})
+                            fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["feature",feature],metadata={'type':file_type,'component':'zap'})
                             file_id = fobj["saveFile"]
                             files[file_id] = copy.deepcopy(fobj)
                             directory["feature"][feature][file_id] = {}
@@ -166,75 +212,161 @@ class myHandler(BaseHTTPRequestHandler):
                     for variant in ["","-dev"]:
                         for signed in ["",".signed",".dev-signed"]:
                             file_name = file_type + "-" + myhash + variant + ".img" + signed
-                           # print file_name
                             fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["release",release],metadata={'type':file_type,'component':'zap'})
                             file_id = fobj["saveFile"]
                             files[file_id] = copy.deepcopy(fobj)
                             directory["release"][release][file_id] = {}
 
+    def listFiles(rh):
+        try:
+            query , findLatest , sortBy , page = rh.splitQuery()
+        except:
+            return rh.sendResponse(400)
+
+        start_time = time.time()
+        #if query:
+        filtered_list = []
+        for f in myHandler.files:
+            if query:
+                if matchQuery(query,myHandler.files[f]):
+                    filtered_list.append(myHandler.files[f])
+            else:
+                filtered_list.append(myHandler.files[f])
+
+        if findLatest:
+            filtered_list = findLatestFile(filtered_list)
+
+        start = 0 
+        end = 100
+        if page:
+            page_size = 100
+            start = (page-1)*page_size
+            if start > len(filtered_list):
+                return rh.sendResponse(404,"No page found")
+            end = page*page_size
+            if end > len(filtered_list):
+                end = len(filtered_list)
+
+        msg = "<h1>Generic Archive Server</h1><hr>"
+        end_time = time.time()
+        msg += "Found: "+str(len(filtered_list))+" files in "+str(end_time-start_time)[0:5]+" seconds. Showing "+str(start)+" to "+str(end)+".<hr>"
+        for file in filtered_list[start:end]:
+            msg += formatFileInfo(file)
+
+        return rh.sendResponse(200,msg,headers=(('Content-type','text/html'))) 
+
+            #return rh.sendResponse(200,json.dumps(filtered_list, sort_keys=True, indent=4, separators=(',', ': ')))    
+
+        #else:
+        #    return rh.sendResponse(200,json.dumps(myHandler.files, sort_keys=True, indent=4, separators=(',', ': ')))  
+
+    def downloadFile(rh):
+        return rh.sendResponse(200,"Download File")
+
+    def numFiles(rh):
+        tot_size = 0
+        for f in myHandler.files:
+            tot_size += int(myHandler.files[f]["size"]) / 1048576
+        #return rh.sendResponse(200,str(len(myHandler.files))+" taking up "+str(tot_size)+"MB")
+        return rh.sendResponse(200,str(len(myHandler.files))+" taking up "+str(tot_size)+"MB",headers=[('Access-Control-Allow-Origin','*'),('Content-type','text/html')])
+
+    def rootDir(rh):
+        msg = "<h1>Generic Archive Server</h1><hr>"
+        msg += '<a href="' + rh.path +"directory"  + '"">'+ "Directory List" + '</a><br>'
+        msg += '<a href="' + rh.path +"files"  + '"">'+ "File List" + '</a><br>'
+        return rh.sendResponse(200,msg,headers=(('Content-type','text/html'))) 
+
+
+
+    def apiFiles(rh):
+        try:
+            query , findLatest , sortBy , page = rh.splitQuery()
+        except:
+            return rh.sendResponse(400)
+
+        start_time = time.time()
+        #if query:
+        filtered_list = []
+        for f in myHandler.files:
+            if query:
+                if matchQuery(query,myHandler.files[f]):
+                    filtered_list.append(myHandler.files[f])
+            else:
+                filtered_list.append(myHandler.files[f])
+
+        if findLatest:
+            filtered_list = findLatestFile(filtered_list)
+
+        start = 0 
+        end = 100
+        if page:
+            page_size = 100
+            start = (page-1)*page_size
+            if start > len(filtered_list):
+                return rh.sendResponse(404,"No page found")
+            end = page*page_size
+            if end > len(filtered_list):
+                end = len(filtered_list)
+
+        return rh.sendResponse(200,json.dumps(filtered_list[0:100]),headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')]) 
+
+        msg = "<h1>Generic Archive Server</h1><hr>"
+        end_time = time.time()
+        msg += "Found: "+str(len(filtered_list))+" files in "+str(end_time-start_time)[0:5]+" seconds. Showing "+str(start)+" to "+str(end)+".<hr>"
+        for file in filtered_list[start:end]:
+            msg += formatFileInfo(file)
+
+        return rh.sendResponse(200,msg,headers=(('Content-type','text/html'))) 
+
+
+
+        # files = []
+        # for f in myHandler.files:
+        #     files.append(myHandler.files[f])
+        # return rh.sendResponse(200,json.dumps(files),headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')]) 
+
+
+    def apiNumFiles(rh):
+        return rh.sendResponse(200,len(myHandler.files),headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')]) 
+
+
+    routes = {}
+    routes["GET"]={}
+    routes["GET"]["/"] = rootDir
+    routes["GET"]["/api/files"]  = apiFiles
+    routes["GET"]["/api/numfiles"]  = apiNumFiles
+    routes["GET"]["/files"]  = listFiles
+    routes["GET"]["/download"]  = downloadFile
+    routes["GET"]["/numfiles"]  = numFiles
 
     #Handler for the GET requests
     def do_GET(self):
+        start_time = time.time()
 
-        query = None
-        findLatest = False
-        sortBy = False
-        query_parameters = []
+        if "/api/files" == self.path[0:10]:
+            return myHandler.routes["GET"]["/api/files"](self)
 
-        split_path = self.path.split("/")[1:]
+        if "/api/numfiles" == self.path[0:13]:
+            return myHandler.routes["GET"]["/api/numfiles"](self)
 
-        if len(self.path.split("?")) == 2:
-            query =  self.path.split("?")[1]
-            
-            for q in query.split("&"):
-                # Look for special cases
-                key = q.split("=")[0]
-                value = q.split("=")[1].replace("%","?")
+        if "/" == self.path[0] and len(self.path) == 1:
+            return myHandler.routes["GET"]["/"](self)
 
-                if key == "uploadDate":
-                    if value == "latest":
-                        findLatest = True
-                    else:
-                        query_parameters.append((key,value))
+        if "/files" == self.path[0:6]:
+            return myHandler.routes["GET"]["/files"](self)
 
-                elif key == "sortBy":
-                    if sortBy:
-                        return self.sendResponse(400,"Cannot have more than one sortBy query")
-                    sortBy = value
-                else:
-                    query_parameters.append((key,value))
+        if "/download" == self.path[0:9]:
+            return myHandler.routes["GET"]["/download"](self)
 
-            query = query_parameters         
+        if "/numfiles" == self.path[0:9]:
+            return myHandler.routes["GET"]["/numfiles"](self)
+
+        query , findLatest , sortBy , page = self.splitQuery()
 
         uri = self.path.split("?")[0]
         split_path = uri.split("/")[1:]
         split_path[0] = "/" + split_path[0]
         split_path[-1] = split_path[-1].replace("%","?")
-
-        # Return the total number of files
-        if self.path[0:9] == "/numfiles":
-            tot_size = 0
-            for f in myHandler.files:
-                tot_size += int(myHandler.files[f]["size"]) / 1048576
-            return self.sendResponse(200,str(len(myHandler.files))+" taking up "+str(tot_size)+"MB")
-
-        # Return a list of files from the flat structure
-        if self.path[0:6] == "/files":
-
-            if query:
-                filtered_list = []
-                for f in myHandler.files:
-                    if matchQuery(query,myHandler.files[f]):
-                        filtered_list.append(myHandler.files[f])
-
-                if findLatest:
-                    filtered_list = findLatestFile(filtered_list)
-
-
-                return self.sendResponse(200,json.dumps(filtered_list, sort_keys=True, indent=4, separators=(',', ': ')))    
-
-            else:
-                return self.sendResponse(200,json.dumps(myHandler.files, sort_keys=True, indent=4, separators=(',', ': ')))    
 
         if self.path[0:10] == "/directory" or self.path[0:9] == "/download":
             
@@ -276,7 +408,8 @@ class myHandler(BaseHTTPRequestHandler):
                     if up_dir != "/":
                         msg = '<h1>Generic Archive Server</h1><br><a href="'+ self.upOne()  + '">'+ 'back' + '</a><hr>'
 
-                    msg += "Found: "+str(len(files_found))+" files.<hr>"
+                    end_time = time.time()
+                    msg += "Found: "+str(len(files_found))+" files in "+str(end_time-start_time)[0:5]+" seconds<hr>"
 
                     for file in files_found[0:100]:
                         msg += formatFileInfo(file)
@@ -338,7 +471,8 @@ class myHandler(BaseHTTPRequestHandler):
             up_dir = self.upOne()
             if up_dir != "/":
                 msg = '<html><h1>Generic Archive Server</h1><br><a href="'+ self.upOne()  + '">'+ 'back' + '</a><hr>'
-                msg += "Found: "+str(len(current_level))+" files.<hr>"
+                end_time = time.time()
+                msg += "Found: "+str(len(current_level))+" files in "+str(end_time-start_time)[0:5]+" seconds<hr>"
 
             for file in current_level:
                 msg += formatFileInfo(file) 
@@ -362,6 +496,9 @@ class myHandler(BaseHTTPRequestHandler):
             if field in ["md5","size","saveFile"]:
                 print "Cannot update these values"
 
+            if field == "parentDir":
+                print "Moving file from " + myHandler.files["parentDir"] + " to " + new_data[field]
+
             myHandler.files[file_id][field] = new_data[field]
 
         return self.sendResponse(205)
@@ -380,6 +517,9 @@ class myHandler(BaseHTTPRequestHandler):
 
         fobj = CreateObject(file_name,parent_dir=directory,metadata={'type':'unknown'})
         file_id = fobj["saveFile"]
+
+        # calculate MD5
+        # calculate SHA256
         myHandler.files[file_id] = copy.deepcopy(fobj)
 
         current_level[file_id] = {}
@@ -405,7 +545,6 @@ class myHandler(BaseHTTPRequestHandler):
         del myHandler.files[file_id]
 
         return self.sendResponse(200)
-        
 
 try:
     #Create a web server and define the handler to manage the #incoming request
