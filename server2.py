@@ -330,11 +330,20 @@ class myHandler(BaseHTTPRequestHandler):
         return rh.sendResponse(200,len(myHandler.files),headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')]) 
 
 
+    def apiListDir(rh):
+
+        info = {}
+        info["child_dirs"] = {}
+        info["child_files"] = {}
+        return rh.sendResponse(200,len(myHandler.files),headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')]) 
+
+
     routes = {}
     routes["GET"]={}
     routes["GET"]["/"] = rootDir
     routes["GET"]["/api/files"]  = apiFiles
     routes["GET"]["/api/numfiles"]  = apiNumFiles
+    routes["GET"]["/api/directory"]  = apiListDir
     routes["GET"]["/files"]  = listFiles
     routes["GET"]["/download"]  = downloadFile
     routes["GET"]["/numfiles"]  = numFiles
@@ -348,6 +357,9 @@ class myHandler(BaseHTTPRequestHandler):
 
         if "/api/numfiles" == self.path[0:13]:
             return myHandler.routes["GET"]["/api/numfiles"](self)
+
+        if "/api/directory" == self.path[0:14]:
+            return myHandler.routes["GET"]["/api/directory"](self)
 
         if "/" == self.path[0] and len(self.path) == 1:
             return myHandler.routes["GET"]["/"](self)
@@ -508,6 +520,18 @@ class myHandler(BaseHTTPRequestHandler):
         file_name = self.path.split("/")[-1]
         directory = self.path.split("/")[1:-1]
 
+        count = 0
+        # boundary = ""
+        # for line in self.rfile:
+        #     if count == 0:
+        #         boundary = line
+
+            #if "Content-Disposition" in line:
+            #    print line.split(";")
+             # do something with the line
+            #if boundary in line:
+            #    print "boundary"
+
         current_level = myHandler.directory
         for d in directory:
             if d not in current_level:
@@ -524,7 +548,7 @@ class myHandler(BaseHTTPRequestHandler):
 
         current_level[file_id] = {}
 
-        return self.sendResponse(200,file_id+"\n")
+        return self.sendResponse(200,file_id+"\n",headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')])
 
     def do_DELETE(self):
         file_id = self.path.split("/")[-1]
