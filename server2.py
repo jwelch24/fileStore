@@ -173,49 +173,49 @@ class myHandler(BaseHTTPRequestHandler):
     directory["feature"]["SOF-5678-my-second-feature"] = {"serverObjectType":"directory"}
 
     myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
-    for i in range(0,30):
+    # for i in range(0,30):
 
-        if random.random() > 0.8:
-            myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
+    #     if random.random() > 0.8:
+    #         myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
 
-        for file_type in ["cx1","rx1","cx2","mx1"]:
-            for variant in ["","-dev"]:
-                for signed in ["",".signed",".dev-signed"]:
-                    file_name = file_type + "-" + myhash + variant + ".img" + signed
-                   # print file_name
-                    fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["develop"],metadata={'type':file_type,'component':'zap'})
-                    file_id = fobj["saveFile"]
-                    files[file_id] = copy.deepcopy(fobj)
+    #     for file_type in ["cx1","rx1","cx2","mx1"]:
+    #         for variant in ["","-dev"]:
+    #             for signed in ["",".signed",".dev-signed"]:
+    #                 file_name = file_type + "-" + myhash + variant + ".img" + signed
+    #                # print file_name
+    #                 fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["develop"],metadata={'type':file_type,'component':'zap'})
+    #                 file_id = fobj["saveFile"]
+    #                 files[file_id] = copy.deepcopy(fobj)
 
-                    directory["develop"][file_id] = {}
+    #                 directory["develop"][file_id] = {}
 
-    for feature in directory["feature"]:
-        if feature != "serverObjectType":
-            myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
-            for i in range(0,10):
+    # for feature in directory["feature"]:
+    #     if feature != "serverObjectType":
+    #         myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
+    #         for i in range(0,10):
                 
-                for file_type in ["cx1","rx1","cx2","mx1"]:
-                    for variant in ["","-dev"]:
-                        for signed in ["",".signed",".dev-signed"]:
-                            file_name = file_type + "-" + myhash + variant + ".img" + signed
-                            fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["feature",feature],metadata={'type':file_type,'component':'zap'})
-                            file_id = fobj["saveFile"]
-                            files[file_id] = copy.deepcopy(fobj)
-                            directory["feature"][feature][file_id] = {}
+    #             for file_type in ["cx1","rx1","cx2","mx1"]:
+    #                 for variant in ["","-dev"]:
+    #                     for signed in ["",".signed",".dev-signed"]:
+    #                         file_name = file_type + "-" + myhash + variant + ".img" + signed
+    #                         fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["feature",feature],metadata={'type':file_type,'component':'zap'})
+    #                         file_id = fobj["saveFile"]
+    #                         files[file_id] = copy.deepcopy(fobj)
+    #                         directory["feature"][feature][file_id] = {}
 
-    for release in directory["release"]:
-        if release != "serverObjectType":
-            myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
-            for i in range(0,1):
+    # for release in directory["release"]:
+    #     if release != "serverObjectType":
+    #         myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
+    #         for i in range(0,1):
                 
-                for file_type in ["cx1","rx1","cx2","mx1"]:
-                    for variant in ["","-dev"]:
-                        for signed in ["",".signed",".dev-signed"]:
-                            file_name = file_type + "-" + myhash + variant + ".img" + signed
-                            fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["release",release],metadata={'type':file_type,'component':'zap'})
-                            file_id = fobj["saveFile"]
-                            files[file_id] = copy.deepcopy(fobj)
-                            directory["release"][release][file_id] = {}
+    #             for file_type in ["cx1","rx1","cx2","mx1"]:
+    #                 for variant in ["","-dev"]:
+    #                     for signed in ["",".signed",".dev-signed"]:
+    #                         file_name = file_type + "-" + myhash + variant + ".img" + signed
+    #                         fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["release",release],metadata={'type':file_type,'component':'zap'})
+    #                         file_id = fobj["saveFile"]
+    #                         files[file_id] = copy.deepcopy(fobj)
+    #                         directory["release"][release][file_id] = {}
 
     def listFiles(rh):
         try:
@@ -521,17 +521,72 @@ class myHandler(BaseHTTPRequestHandler):
         directory = self.path.split("/")[1:-1]
 
         count = 0
-        # boundary = ""
-        # for line in self.rfile:
-        #     if count == 0:
-        #         boundary = line
+        boundary = ""
+        content = ""
+        skip = False
+        tempFile = str(uuid.uuid4())
+        f = open(tempFile, "w")
+        count = 0
 
-            #if "Content-Disposition" in line:
-            #    print line.split(";")
-             # do something with the line
-            #if boundary in line:
-            #    print "boundary"
+        print self.headers
 
+        totalLength = self.headers['Content-Length']
+        ctype = self.headers['Content-Type']
+
+        print "CTYPE",ctype
+        if "boundary=" in ctype:
+            
+            boundary = ctype.split("boundary=")[1]
+            print "BOUNDARY",boundary,len(boundary)
+
+        bytesRemaining = int(totalLength)
+        boundaryLength = 0
+        written = False
+        self.sendResponse(100)
+        print ""
+        for line in self.rfile:
+            count += 1
+            bytesRemaining -= len(line)
+            print bytesRemaining , len(line) , boundaryLength , len(boundary), line[:-1]
+        #    if bytesRemaining == 0:
+        #        break
+
+            if skip:
+                skip = False
+                continue
+
+            if "WebKitFormBoundary" in line:
+                boundary = line
+                boundaryLength = len(line)
+                continue
+
+            if "Content-Disposition" in line:
+                continue
+            if "Content-Type" in line:
+                skip = True
+                continue
+
+            # #do something with the line
+            
+            if boundary in line:
+
+                if bytesRemaining > 0:
+                    if bytesRemaining == len(boundary) + 2:
+                        print "FOUND BOUNDARY"
+                        break
+
+                    print 1
+                else:
+                    break
+               #print "boundary"
+            else:
+
+                if bytesRemaining == len(boundary)+6:
+                    f.write(line)
+                else:
+                    f.write(line)
+
+        return self.sendResponse(200)
         current_level = myHandler.directory
         for d in directory:
             if d not in current_level:
