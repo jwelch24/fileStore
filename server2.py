@@ -580,8 +580,8 @@ class myHandler(BaseHTTPRequestHandler):
 
             current_level = current_level[d]
 
+        
         fileName = fileName.split('"')[1]
-        print directory
 
         fobj = CreateObject(fileName,parent_dir=directory,metadata={'type':'unknown'})
         file_id = fobj["saveFile"]
@@ -591,12 +591,10 @@ class myHandler(BaseHTTPRequestHandler):
         shutil.move(tempFile,"files/{}".format(fobj["saveFile"]))
         myHandler.files[file_id] = copy.deepcopy(fobj)
 
+        current_level[file_id] = {}
         # Update the file
         with open('files.json', 'w') as file:  
             file.write(json.dumps(myHandler.files))
-
-
-        current_level[file_id] = {}
 
         return self.sendResponse(200,file_id+"\n",headers=[('Content-type','application/json')])
 
