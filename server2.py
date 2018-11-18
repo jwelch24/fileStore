@@ -509,7 +509,9 @@ class myHandler(BaseHTTPRequestHandler):
 
         return self.sendResponse(205)
 
+    # curl -i -X POST -H "Content-Type: multipart/form-data" -F "data=@archive.py" http://localhost:80/feature/jame
     def do_POST(self):
+
 
         file_name = self.path.split("/")[-1]
         directory = self.path.split("/")[1:]
@@ -573,6 +575,8 @@ class myHandler(BaseHTTPRequestHandler):
                 else:
                     f.write(line)
 
+        f.close()
+
         current_level = myHandler.directory
         for d in directory:
             if d not in current_level:
@@ -603,24 +607,12 @@ class myHandler(BaseHTTPRequestHandler):
                                               ('Content-type','application/json')])
 
     def do_DELETE(self):
-        print "deleteing file"
         file_id = self.path.split("/")[-1]
 
         if file_id not in myHandler.files:
             return self.sendResponse(404,headers=[('Content-type','application/json')])
 
-        # parent_dir = myHandler.files[file_id]["parentDir"].split("/")
-
-        # try:
-        # directory = myHandler.directory
-        # for path in parent_dir:
-        #     directory = directory[path]
-
-        # if file_id not in directory:
-        #     print "lalala"
-        #     #return self.sendResponse(500,headers=[('Content-type','application/json')])
-        # else:
-        #     del directory[file_id]
+        #TODO - Handle the directory structure case.
 
         del myHandler.files[file_id]
 
