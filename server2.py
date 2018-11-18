@@ -609,16 +609,19 @@ class myHandler(BaseHTTPRequestHandler):
         if file_id not in myHandler.files:
             return self.sendResponse(404,headers=[('Content-type','application/json')])
 
-        parent_dir = myHandler.files[file_id]["parentDir"].split("/")
+        # parent_dir = myHandler.files[file_id]["parentDir"].split("/")
 
-        directory = myHandler.directory
-        for path in parent_dir:
-            directory = directory[path]
+        # try:
+        # directory = myHandler.directory
+        # for path in parent_dir:
+        #     directory = directory[path]
 
-        if file_id not in directory:
-            return self.sendResponse(500,headers=[('Content-type','application/json')])
+        # if file_id not in directory:
+        #     print "lalala"
+        #     #return self.sendResponse(500,headers=[('Content-type','application/json')])
+        # else:
+        #     del directory[file_id]
 
-        del directory[file_id]
         del myHandler.files[file_id]
 
         return self.sendResponse(200,headers=[('Content-type','application/json')])
