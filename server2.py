@@ -8,10 +8,27 @@ import fnmatch
 import datetime
 import string
 import uuid
+import os
+import shutil
+import hashlib
 
 PORT_NUMBER = 80
+BUF_SIZE = 65536  # lets read stuff in 64kb chunks!
+DEBUG = True
 
+def fileHashes(file):
+    md5 = hashlib.md5()
+    sha256 = hashlib.sha256()
 
+    with open(file, 'rb') as f:
+        while True:
+            data = f.read(BUF_SIZE)
+            if not data:
+                break
+            md5.update(data)
+            sha256.update(data)
+
+    return md5.hexdigest() , sha256.hexdigest()
 
 def CreateObject(filename,upload_time=None,parent_dir=None,metadata={}):
     new_object = {}
@@ -106,6 +123,10 @@ class myHandler(BaseHTTPRequestHandler):
                 print h
                 self.send_header(h[0],h[1])
 
+        if DEBUG:
+            # ('Access-Control-Allow-Origin','*')
+            print "Adding debug headers"
+            self.send_header('Access-Control-Allow-Origin','*')
 #        self.send_header('Content-type','text/html')
         self.end_headers()
         if msg:
@@ -162,60 +183,18 @@ class myHandler(BaseHTTPRequestHandler):
 
     files = {}
 
+    if os.path.isfile("files.json"):
+        with open("files.json") as file: # Use file to refer to the file object
+
+            files = json.loads(file.read())
+
+    else:
+        with open('files.json', 'w') as file:  # Use file to refer to the file object
+
+            file.write(json.dumps(files))
+
     directory = {}
-    directory["develop"] = {"serverObjectType":"directory"}
-    directory["feature"] = {"serverObjectType":"directory"}
-    directory["release"] = {"serverObjectType":"directory"}
-    directory["release"]["1.1.0"] = {"serverObjectType":"directory"}
-    directory["release"]["1.2.0"] = {"serverObjectType":"directory"}
-    directory["release"]["1.3.0"] = {"serverObjectType":"directory"}
-    directory["feature"]["SOF-1234-my-first-feature"] = {"serverObjectType":"directory"}
-    directory["feature"]["SOF-5678-my-second-feature"] = {"serverObjectType":"directory"}
 
-    myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
-    # for i in range(0,30):
-
-    #     if random.random() > 0.8:
-    #         myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
-
-    #     for file_type in ["cx1","rx1","cx2","mx1"]:
-    #         for variant in ["","-dev"]:
-    #             for signed in ["",".signed",".dev-signed"]:
-    #                 file_name = file_type + "-" + myhash + variant + ".img" + signed
-    #                # print file_name
-    #                 fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["develop"],metadata={'type':file_type,'component':'zap'})
-    #                 file_id = fobj["saveFile"]
-    #                 files[file_id] = copy.deepcopy(fobj)
-
-    #                 directory["develop"][file_id] = {}
-
-    # for feature in directory["feature"]:
-    #     if feature != "serverObjectType":
-    #         myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
-    #         for i in range(0,10):
-                
-    #             for file_type in ["cx1","rx1","cx2","mx1"]:
-    #                 for variant in ["","-dev"]:
-    #                     for signed in ["",".signed",".dev-signed"]:
-    #                         file_name = file_type + "-" + myhash + variant + ".img" + signed
-    #                         fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["feature",feature],metadata={'type':file_type,'component':'zap'})
-    #                         file_id = fobj["saveFile"]
-    #                         files[file_id] = copy.deepcopy(fobj)
-    #                         directory["feature"][feature][file_id] = {}
-
-    # for release in directory["release"]:
-    #     if release != "serverObjectType":
-    #         myhash = ''.join(random.choice(string.hexdigits.lower()) for _ in range(7))
-    #         for i in range(0,1):
-                
-    #             for file_type in ["cx1","rx1","cx2","mx1"]:
-    #                 for variant in ["","-dev"]:
-    #                     for signed in ["",".signed",".dev-signed"]:
-    #                         file_name = file_type + "-" + myhash + variant + ".img" + signed
-    #                         fobj = CreateObject(file_name,upload_time=time.time()+i*86400,parent_dir=["release",release],metadata={'type':file_type,'component':'zap'})
-    #                         file_id = fobj["saveFile"]
-    #                         files[file_id] = copy.deepcopy(fobj)
-    #                         directory["release"][release][file_id] = {}
 
     def listFiles(rh):
         try:
@@ -295,7 +274,9 @@ class myHandler(BaseHTTPRequestHandler):
                 filtered_list.append(myHandler.files[f])
 
         if findLatest:
-            filtered_list = findLatestFile(filtered_list)
+
+            latest_file = findLatestFile(filtered_list)
+            filtered_list = [latest_file]
 
         start = 0 
         end = 100
@@ -308,7 +289,16 @@ class myHandler(BaseHTTPRequestHandler):
             if end > len(filtered_list):
                 end = len(filtered_list)
 
-        return rh.sendResponse(200,json.dumps(filtered_list[0:100]),headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')]) 
+        print len(filtered_list)
+
+        if len(filtered_list) == 0:
+            return rh.sendResponse(404,json.dumps(filtered_list),headers=[('Content-type','application/json')]) 
+
+        print json.dumps(filtered_list)
+
+        # Return the list of files sorted by time uploaded (newest first)
+        sorted_list = sorted(filtered_list, key=lambda k: time.time() - k['uploadedAt']) 
+        return rh.sendResponse(200,json.dumps(sorted_list),headers=[('Content-type','application/json')]) 
 
         msg = "<h1>Generic Archive Server</h1><hr>"
         end_time = time.time()
@@ -323,11 +313,11 @@ class myHandler(BaseHTTPRequestHandler):
         # files = []
         # for f in myHandler.files:
         #     files.append(myHandler.files[f])
-        # return rh.sendResponse(200,json.dumps(files),headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')]) 
+        # return rh.sendResponse(200,json.dumps(files),headers=[('Content-type','application/json')]) 
 
 
     def apiNumFiles(rh):
-        return rh.sendResponse(200,len(myHandler.files),headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')]) 
+        return rh.sendResponse(200,len(myHandler.files),headers=[('Content-type','application/json')]) 
 
 
     def apiListDir(rh):
@@ -335,7 +325,7 @@ class myHandler(BaseHTTPRequestHandler):
         info = {}
         info["child_dirs"] = {}
         info["child_files"] = {}
-        return rh.sendResponse(200,len(myHandler.files),headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')]) 
+        return rh.sendResponse(200,len(myHandler.files),headers=[('Content-type','application/json')]) 
 
 
     routes = {}
@@ -351,6 +341,10 @@ class myHandler(BaseHTTPRequestHandler):
     #Handler for the GET requests
     def do_GET(self):
         start_time = time.time()
+
+        if "/" == self.path:
+            print "Getting root for static content"
+            return self.sendResponse(200)
 
         if "/api/files" == self.path[0:10]:
             return myHandler.routes["GET"]["/api/files"](self)
@@ -518,7 +512,7 @@ class myHandler(BaseHTTPRequestHandler):
     def do_POST(self):
 
         file_name = self.path.split("/")[-1]
-        directory = self.path.split("/")[1:-1]
+        directory = self.path.split("/")[1:]
 
         count = 0
         boundary = ""
@@ -528,28 +522,24 @@ class myHandler(BaseHTTPRequestHandler):
         f = open(tempFile, "w")
         count = 0
 
-        print self.headers
 
         totalLength = self.headers['Content-Length']
         ctype = self.headers['Content-Type']
 
-        print "CTYPE",ctype
-        if "boundary=" in ctype:
-            
-            boundary = ctype.split("boundary=")[1]
-            print "BOUNDARY",boundary,len(boundary)
+        if "boundary=" in ctype:            
+            boundary = ctype.split("boundary=")[1].split("-")[-1]
 
         bytesRemaining = int(totalLength)
         boundaryLength = 0
         written = False
         self.sendResponse(100)
-        print ""
+        fileName = ""
         for line in self.rfile:
             count += 1
             bytesRemaining -= len(line)
-            print bytesRemaining , len(line) , boundaryLength , len(boundary), line[:-1]
-        #    if bytesRemaining == 0:
-        #        break
+
+            if boundary in line:
+                boundaryLength = len(line)
 
             if skip:
                 skip = False
@@ -561,32 +551,28 @@ class myHandler(BaseHTTPRequestHandler):
                 continue
 
             if "Content-Disposition" in line:
+                if "filename=" in line:
+                    fileName = line.split("filename=")[-1]
                 continue
             if "Content-Type" in line:
                 skip = True
                 continue
 
-            # #do something with the line
-            
             if boundary in line:
 
                 if bytesRemaining > 0:
                     if bytesRemaining == len(boundary) + 2:
-                        print "FOUND BOUNDARY"
                         break
-
-                    print 1
                 else:
                     break
-               #print "boundary"
             else:
 
-                if bytesRemaining == len(boundary)+6:
-                    f.write(line)
+                if bytesRemaining == boundaryLength+2:
+                    f.write(line[:-2]) 
+                    break
                 else:
                     f.write(line)
 
-        return self.sendResponse(200)
         current_level = myHandler.directory
         for d in directory:
             if d not in current_level:
@@ -594,22 +580,36 @@ class myHandler(BaseHTTPRequestHandler):
 
             current_level = current_level[d]
 
-        fobj = CreateObject(file_name,parent_dir=directory,metadata={'type':'unknown'})
-        file_id = fobj["saveFile"]
+        fileName = fileName.split('"')[1]
+        print directory
 
-        # calculate MD5
-        # calculate SHA256
+        fobj = CreateObject(fileName,parent_dir=directory,metadata={'type':'unknown'})
+        file_id = fobj["saveFile"]
+        fobj["size"] = os.path.getsize(tempFile)
+        fobj["md5sum"] , fobj["sha256"] = fileHashes(tempFile)
+
+        shutil.move(tempFile,"files/{}".format(fobj["saveFile"]))
         myHandler.files[file_id] = copy.deepcopy(fobj)
+
+        # Update the file
+        with open('files.json', 'w') as file:  
+            file.write(json.dumps(myHandler.files))
+
 
         current_level[file_id] = {}
 
-        return self.sendResponse(200,file_id+"\n",headers=[('Access-Control-Allow-Origin','*'),('Content-type','application/json')])
+        return self.sendResponse(200,file_id+"\n",headers=[('Content-type','application/json')])
+
+    def do_OPTIONS(self):
+        return self.sendResponse(200,headers=[("Access-Control-Allow-Methods","GET, POST, OPTIONS, PUT, DELETE"),
+                                              ('Content-type','application/json')])
 
     def do_DELETE(self):
+        print "deleteing file"
         file_id = self.path.split("/")[-1]
 
         if file_id not in myHandler.files:
-            return self.sendResponse(404)
+            return self.sendResponse(404,headers=[('Content-type','application/json')])
 
         parent_dir = myHandler.files[file_id]["parentDir"].split("/")
 
@@ -618,12 +618,12 @@ class myHandler(BaseHTTPRequestHandler):
             directory = directory[path]
 
         if file_id not in directory:
-            return self.sendResponse(500)
+            return self.sendResponse(500,headers=[('Content-type','application/json')])
 
         del directory[file_id]
         del myHandler.files[file_id]
 
-        return self.sendResponse(200)
+        return self.sendResponse(200,headers=[('Content-type','application/json')])
 
 try:
     #Create a web server and define the handler to manage the #incoming request
