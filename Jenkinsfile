@@ -6,6 +6,7 @@ pipeline {
             steps {
                 echo 'Building..'
                 echo 'Still building...'
+                echo 'This is a feature branch'
             }
         }
         stage('Test') {
